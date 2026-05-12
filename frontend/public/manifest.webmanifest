@@ -1,0 +1,10 @@
+{
+  "name": "Amani Circle",
+  "short_name": "Amani Circle",
+  "description": "Privacy-first community reporting and trusted responder workflows.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1f5f4a",
+  "icons": []
+}
