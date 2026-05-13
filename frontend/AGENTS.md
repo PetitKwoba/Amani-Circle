@@ -1,28 +1,34 @@
 # AGENTS.md
 
 ## Scope
-This folder contains the React + Vite frontend for Amani Circle.
+This folder contains the React + Vite + TypeScript frontend for Amani Circle.
 
 ## Frontend priorities
-- Mobile-first, accessible UI.
-- Plain language for low-literacy contexts.
-- Clear separation between community, responder, and public views.
-- Quick-exit safety action available from primary app screens.
-- Offline draft support before more complex sync.
-- Multilingual strings through react-i18next.
+- Mobile-first responsive design
+- Offline-first behavior
+- Simple, short forms
+- Multilingual UI
+- Accessible components
+- Low-bandwidth experience
+- Clear separation of community, responder, and public views
 
-## Accessibility and disability inclusion
-- Treat WCAG 2.2 AA as the baseline for frontend work.
-- Preserve keyboard-only access for every flow.
-- Use semantic HTML before custom interaction patterns.
-- Provide visible focus states for links, buttons, inputs, and custom controls.
-- Connect form labels, helper text, and errors with accessible attributes.
-- Do not rely on color alone; use text, shape, state, or semantics as well.
-- Keep copy simple, predictable, and translation-ready.
-- Support screen readers, text resizing, low-precision input, and cognitive accessibility.
+## Frontend rules
+- Use Tailwind CSS.
+- Keep components small and reusable.
+- Use plain-language labels and errors.
+- Prefer icon + text for important actions.
+- Use step-by-step flows instead of long forms.
+- Keep public screens privacy-safe.
+- Do not expose exact coordinates in public UI.
+- Responder-only sensitive data must be role-gated.
 
-## Privacy rules
-- Do not show sensitive report details in public dashboard components.
-- Do not request exact GPS in the initial community reporting flow.
-- Prefer rough location text or region fields.
-- Avoid storing personally identifying data in browser state.
+## Target screens
+- Community report flow
+- Responder dashboard
+- Public aggregated trends page
+
+## Avoid
+- Heavy animations
+- Large image assets
+- Complex state management unless necessary
+- Over-designed dashboards
