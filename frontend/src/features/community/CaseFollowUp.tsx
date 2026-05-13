@@ -9,6 +9,16 @@ export function CaseFollowUp() {
   const [status, setStatus] = useState<CaseStatusResponse | null>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [copyStatus, setCopyStatus] = useState('');
+
+  async function copyCaseId(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyStatus(t('community.copySuccess'));
+    } catch {
+      setCopyStatus(t('community.copyFailed'));
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -97,12 +107,24 @@ export function CaseFollowUp() {
             <div>
               <dt className="text-sm font-bold text-slate-600">{t('followup.caseId')}</dt>
               <dd className="text-base font-semibold text-amani-ink">{status.case_id}</dd>
+              <button
+                type="button"
+                onClick={() => copyCaseId(status.case_id)}
+                className="mt-3 min-h-11 rounded-md border border-amani-forest px-3 py-2 text-sm font-bold text-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-sun"
+              >
+                {t('community.copyCaseId')}
+              </button>
             </div>
             <div>
               <dt className="text-sm font-bold text-slate-600">{t('followup.status')}</dt>
               <dd className="text-base font-semibold text-amani-ink">{t(`reportStatus.${status.status}`)}</dd>
             </div>
           </dl>
+          {copyStatus && (
+            <p className="mt-3 text-sm font-semibold text-slate-700" role="status">
+              {copyStatus}
+            </p>
+          )}
           <p className="mt-3 text-base leading-7 text-slate-700">
             {status.reporter_message || t(`reporterMessages.${status.reporter_message_code}`)}
           </p>

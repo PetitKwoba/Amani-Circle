@@ -11,6 +11,7 @@ export const sw = {
     followup: 'Fuatilia',
     responder: 'Mwitikio',
     public: 'Umma',
+    account: 'Akaunti',
   },
   community: {
     title: 'Shiriki wasiwasi kwa usalama',

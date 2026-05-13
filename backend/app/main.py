@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.encoders import jsonable_encoder
 
-from .routers import auth, community, public, responder, system
+from .routers import admin, auth, community, location, public, responder, system
 from .store import init_db
 
 
@@ -26,7 +26,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:5173", "http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -55,6 +55,8 @@ def validation_error_handler(_: Request, exc: RequestValidationError) -> JSONRes
 
 app.include_router(system.router)
 app.include_router(auth.router)
+app.include_router(admin.router)
 app.include_router(community.router)
+app.include_router(location.router)
 app.include_router(responder.router)
 app.include_router(public.router)

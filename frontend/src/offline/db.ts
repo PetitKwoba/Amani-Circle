@@ -11,8 +11,12 @@ export type ReportUrgency = 'low' | 'medium' | 'high';
 export type ReportDraft = {
   id: string;
   category: ReportCategory | '';
+  reporterCategoryText: string;
   urgency: ReportUrgency;
   roughLocation: string;
+  country: string;
+  city: string;
+  village: string;
   roughRegion: string;
   nearbyLandmark: string;
   locationPlaceType: string;

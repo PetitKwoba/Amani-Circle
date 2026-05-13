@@ -17,3 +17,5 @@ backend/tests/.tmp/
 Thumbs.db
 
 .vite/
+
+*.log

@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ReportPayload, ReportSubmissionResponse, submitReport } from '../../api';
+import { LocationSearchResult, ReportPayload, ReportSubmissionResponse, searchLocations, submitReport } from '../../api';
 import {
   clearReportDraft,
   enqueuePendingReport,
@@ -27,6 +27,7 @@ const categories: ReportCategory[] = [
 const urgencyLevels: ReportUrgency[] = ['low', 'medium', 'high'];
 const totalSteps = 4;
 const placeTypes = ['market', 'school', 'clinic', 'water_point', 'road', 'place_of_worship', 'other'];
+const recentLocationsKey = 'amani-recent-locations';
 
 function createFollowUpSecret() {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
@@ -37,8 +38,12 @@ type Step = 'category' | 'details' | 'location' | 'review' | 'success';
 
 type FormState = {
   category: ReportCategory | '';
+  reporterCategoryText: string;
   urgency: ReportUrgency;
   roughLocation: string;
+  country: string;
+  city: string;
+  village: string;
   roughRegion: string;
   nearbyLandmark: string;
   locationPlaceType: string;
@@ -58,13 +63,35 @@ type FormState = {
 type StatusState = {
   tone: 'info' | 'error';
   message: string;
-  target?: 'category' | 'details' | 'location' | 'contact' | 'sync';
+  target?: 'category' | 'otherCategory' | 'details' | 'location' | 'contact' | 'sync';
 };
+
+function locationSummary(location: Pick<FormState, 'village' | 'city' | 'country'>) {
+  return [location.village, location.city, location.country].filter(Boolean).join(', ');
+}
+
+function loadRecentLocations(): LocationSearchResult[] {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(recentLocationsKey) ?? '[]');
+    return Array.isArray(parsed) ? parsed.slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentLocation(location: LocationSearchResult) {
+  const current = loadRecentLocations().filter((item) => item.provider_place_id !== location.provider_place_id);
+  localStorage.setItem(recentLocationsKey, JSON.stringify([location, ...current].slice(0, 5)));
+}
 
 const emptyForm: FormState = {
   category: '',
+  reporterCategoryText: '',
   urgency: 'medium',
   roughLocation: '',
+  country: '',
+  city: '',
+  village: '',
   roughRegion: '',
   nearbyLandmark: '',
   locationPlaceType: '',
@@ -133,6 +160,37 @@ function SyncStatusPanel({
   );
 }
 
+function CopyValueButton({ value, label }: { value: string; label: string }) {
+  const { t } = useTranslation();
+  const [status, setStatus] = useState('');
+
+  async function copyValue() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setStatus(t('community.copySuccess'));
+    } catch {
+      setStatus(t('community.copyFailed'));
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <button
+        type="button"
+        onClick={copyValue}
+        className="min-h-11 rounded-md border border-amani-forest px-3 py-2 text-sm font-bold text-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-sun"
+      >
+        {label}
+      </button>
+      {status && (
+        <p className="mt-2 text-sm font-semibold text-slate-700" role="status">
+          {status}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function CommunityReport() {
   const { t } = useTranslation();
   const [form, setForm] = useState<FormState>(emptyForm);
@@ -141,6 +199,11 @@ export function CommunityReport() {
   const [submission, setSubmission] = useState<ReportSubmissionResponse | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [locationQuery, setLocationQuery] = useState('');
+  const [locationResults, setLocationResults] = useState<LocationSearchResult[]>([]);
+  const [recentLocations, setRecentLocations] = useState<LocationSearchResult[]>([]);
+  const [locationSearchState, setLocationSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
+  const [manualLocationMode, setManualLocationMode] = useState(false);
   const [pendingReports, setPendingReports] = useState<PendingReport[]>([]);
   const [receipts, setReceipts] = useState<ReportReceipt[]>([]);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -186,14 +249,19 @@ export function CommunityReport() {
   }
 
   useEffect(() => {
+    setRecentLocations(loadRecentLocations());
     refreshQueueState().catch(() => undefined);
     loadReportDraft()
       .then((draft) => {
         if (draft) {
           setForm({
             category: draft.category,
+            reporterCategoryText: draft.reporterCategoryText ?? '',
             urgency: draft.urgency,
             roughLocation: draft.roughLocation,
+            country: draft.country ?? '',
+            city: draft.city ?? '',
+            village: draft.village ?? '',
             roughRegion: draft.roughRegion ?? '',
             nearbyLandmark: draft.nearbyLandmark ?? '',
             locationPlaceType: draft.locationPlaceType ?? '',
@@ -238,6 +306,31 @@ export function CommunityReport() {
   }, [t]);
 
   useEffect(() => {
+    if (step !== 'location') return;
+    const query = locationQuery.trim();
+    if (query.length < 2 || !navigator.onLine) {
+      setLocationResults([]);
+      setLocationSearchState('idle');
+      return;
+    }
+
+    setLocationSearchState('loading');
+    const timeout = window.setTimeout(() => {
+      searchLocations(query)
+        .then((results) => {
+          setLocationResults(results);
+          setLocationSearchState('ready');
+        })
+        .catch(() => {
+          setLocationResults([]);
+          setLocationSearchState('error');
+        });
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [locationQuery, step]);
+
+  useEffect(() => {
     headingRef.current?.focus();
   }, [step]);
 
@@ -252,13 +345,28 @@ export function CommunityReport() {
       return false;
     }
 
+    if (step === 'category' && form.category === 'other' && form.reporterCategoryText.trim().length < 2) {
+      setStatus({ tone: 'error', message: t('community.validationOtherCategory'), target: 'otherCategory' });
+      return false;
+    }
+
     if (step === 'details' && form.details.trim().length < 8) {
       setStatus({ tone: 'error', message: t('community.validationDetails'), target: 'details' });
       return false;
     }
 
-    if (step === 'location' && form.roughLocation.trim().length < 2) {
-      setStatus({ tone: 'error', message: t('community.validationLocation'), target: 'location' });
+    if (step === 'location' && form.country.trim().length < 2) {
+      setStatus({ tone: 'error', message: t('community.validationCountry'), target: 'location' });
+      return false;
+    }
+
+    if (step === 'location' && form.city.trim().length < 2) {
+      setStatus({ tone: 'error', message: t('community.validationCity'), target: 'location' });
+      return false;
+    }
+
+    if (step === 'location' && form.village.trim().length < 2) {
+      setStatus({ tone: 'error', message: t('community.validationVillage'), target: 'location' });
       return false;
     }
 
@@ -301,15 +409,33 @@ export function CommunityReport() {
       return;
     }
 
+    if (form.category === 'other' && form.reporterCategoryText.trim().length < 2) {
+      setStep('category');
+      setStatus({ tone: 'error', message: t('community.validationOtherCategory'), target: 'otherCategory' });
+      return;
+    }
+
     if (form.details.trim().length < 8) {
       setStep('details');
       setStatus({ tone: 'error', message: t('community.validationDetails'), target: 'details' });
       return;
     }
 
-    if (form.roughLocation.trim().length < 2) {
+    if (form.country.trim().length < 2) {
       setStep('location');
-      setStatus({ tone: 'error', message: t('community.validationLocation'), target: 'location' });
+      setStatus({ tone: 'error', message: t('community.validationCountry'), target: 'location' });
+      return;
+    }
+
+    if (form.city.trim().length < 2) {
+      setStep('location');
+      setStatus({ tone: 'error', message: t('community.validationCity'), target: 'location' });
+      return;
+    }
+
+    if (form.village.trim().length < 2) {
+      setStep('location');
+      setStatus({ tone: 'error', message: t('community.validationVillage'), target: 'location' });
       return;
     }
 
@@ -325,9 +451,13 @@ export function CommunityReport() {
       client_report_id: clientReportId,
       follow_up_secret: followUpSecret,
       category: form.category,
+      reporter_category_text: form.category === 'other' ? form.reporterCategoryText.trim() : undefined,
       urgency: form.urgency,
       details: form.details,
-      rough_location: form.roughLocation,
+      rough_location: form.roughLocation || locationSummary(form),
+      country: form.country,
+      city: form.city,
+      village: form.village,
       rough_region: form.roughRegion || undefined,
       nearby_landmark: form.nearbyLandmark || undefined,
       location_place_type: form.locationPlaceType || undefined,
@@ -390,6 +520,26 @@ export function CommunityReport() {
     );
   }
 
+  function selectLocation(result: LocationSearchResult) {
+    const nextForm = {
+      ...form,
+      country: result.country ?? form.country,
+      city: result.city ?? form.city,
+      village: result.village ?? form.village,
+      roughLocation: result.label || locationSummary({
+        country: result.country ?? form.country,
+        city: result.city ?? form.city,
+        village: result.village ?? form.village,
+      }),
+      nearbyLandmark: result.landmark ?? form.nearbyLandmark,
+    };
+    setForm(nextForm);
+    setStatus(null);
+    saveRecentLocation(result);
+    setRecentLocations(loadRecentLocations());
+    setManualLocationMode(result.missing_fields.length > 0);
+  }
+
   if (step === 'success') {
     return (
       <section className="space-y-5" aria-labelledby="community-success-title">
@@ -406,29 +556,39 @@ export function CommunityReport() {
             {submission ? t('community.submittedMessage') : t('community.queuedMessage')}
           </p>
           {submission && (
+            <>
+            <p className="mt-3 text-sm font-semibold text-slate-700">{t('community.codeGuidance')}</p>
             <dl className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-md bg-white p-4">
                 <dt className="text-sm font-bold text-slate-600">{t('community.caseId')}</dt>
                 <dd className="mt-1 text-xl font-bold text-amani-ink">{submission.case_id}</dd>
+                <CopyValueButton value={submission.case_id} label={t('community.copyCaseId')} />
               </div>
               <div className="rounded-md bg-white p-4">
                 <dt className="text-sm font-bold text-slate-600">{t('community.followUpCode')}</dt>
                 <dd className="mt-1 text-xl font-bold text-amani-ink">{submission.follow_up_code}</dd>
+                <CopyValueButton value={submission.follow_up_code} label={t('community.copyFollowUpCode')} />
               </div>
             </dl>
+            </>
           )}
           {submission && <p className="mt-3 text-sm font-semibold text-slate-700">{t('community.saveCodes')}</p>}
           {!submission && latestReceipt && (
+            <>
+            <p className="mt-3 text-sm font-semibold text-slate-700">{t('community.codeGuidance')}</p>
             <dl className="mt-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-md bg-white p-4">
                 <dt className="text-sm font-bold text-slate-700">{t('community.caseId')}</dt>
                 <dd className="mt-1 text-xl font-bold text-amani-ink">{latestReceipt.caseId}</dd>
+                <CopyValueButton value={latestReceipt.caseId} label={t('community.copyCaseId')} />
               </div>
               <div className="rounded-md bg-white p-4">
                 <dt className="text-sm font-bold text-slate-700">{t('community.followUpCode')}</dt>
                 <dd className="mt-1 text-xl font-bold text-amani-ink">{latestReceipt.followUpCode}</dd>
+                <CopyValueButton value={latestReceipt.followUpCode} label={t('community.copyFollowUpCode')} />
               </div>
             </dl>
+            </>
           )}
         </div>
 
@@ -524,7 +684,11 @@ export function CommunityReport() {
                       value={category}
                       checked={form.category === category}
                       onChange={() => {
-                        setForm((current) => ({ ...current, category }));
+                        setForm((current) => ({
+                          ...current,
+                          category,
+                          reporterCategoryText: category === 'other' ? current.reporterCategoryText : '',
+                        }));
                         setStatus(null);
                       }}
                       className="mr-3 h-5 w-5 accent-amani-forest"
@@ -539,6 +703,29 @@ export function CommunityReport() {
                 ))}
               </div>
             </fieldset>
+
+            {form.category === 'other' && (
+              <label htmlFor="other-category" className="block space-y-2 rounded-md border border-slate-200 bg-white p-4">
+                <span className="text-base font-bold text-amani-ink">{t('community.otherCategoryLabel')}</span>
+                <span id="other-category-help" className="block text-sm text-slate-600">
+                  {t('community.otherCategoryHelp')}
+                </span>
+                <input
+                  id="other-category"
+                  type="text"
+                  value={form.reporterCategoryText}
+                  maxLength={120}
+                  onChange={(event) => {
+                    setForm((current) => ({ ...current, reporterCategoryText: event.target.value }));
+                    setStatus(null);
+                  }}
+                  aria-describedby={status?.target === 'otherCategory' ? 'other-category-help report-status' : 'other-category-help'}
+                  aria-invalid={hasValidationError && status?.target === 'otherCategory'}
+                  className="min-h-12 w-full rounded-md border border-slate-300 px-4 py-3 text-base focus:border-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-mist"
+                  placeholder={t('community.otherCategoryPlaceholder')}
+                />
+              </label>
+            )}
 
             <fieldset className="space-y-3">
               <legend className="text-base font-bold text-amani-ink">{t('community.urgency')}</legend>
@@ -594,6 +781,138 @@ export function CommunityReport() {
         {step === 'location' && (
           <div className="space-y-5">
             <div className="space-y-2">
+              <label htmlFor="location-search" className="block text-base font-bold text-amani-ink">
+                {t('community.locationSearch')}
+              </label>
+              <span id="location-search-help" className="block text-sm text-slate-600">
+                {t('community.locationSearchHelp')}
+              </span>
+              <input
+                id="location-search"
+                type="search"
+                value={locationQuery}
+                onChange={(event) => setLocationQuery(event.target.value)}
+                aria-describedby="location-search-help"
+                aria-controls="location-search-results"
+                className="min-h-12 w-full rounded-md border border-slate-300 px-4 py-3 text-base focus:border-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-mist"
+                placeholder={t('community.locationSearchPlaceholder')}
+              />
+              {!isOnline && (
+                <p className="text-sm font-semibold text-amber-900" role="status">
+                  {t('community.locationSearchOffline')}
+                </p>
+              )}
+              {locationSearchState === 'loading' && (
+                <p className="text-sm font-semibold text-slate-700" role="status">{t('community.locationSearching')}</p>
+              )}
+              {locationSearchState === 'error' && (
+                <p className="text-sm font-semibold text-rose-900" role="alert">{t('community.locationSearchError')}</p>
+              )}
+              {locationSearchState === 'ready' && locationResults.length === 0 && (
+                <p className="text-sm font-semibold text-slate-700" role="status">{t('community.locationSearchEmpty')}</p>
+              )}
+              {locationResults.length > 0 && (
+                <div id="location-search-results" role="listbox" aria-label={t('community.locationSearchResults')} className="space-y-2">
+                  {locationResults.map((result) => (
+                    <button
+                      key={`${result.provider}-${result.provider_place_id}`}
+                      type="button"
+                      role="option"
+                      onClick={() => selectLocation(result)}
+                      className="w-full rounded-md border border-slate-300 bg-white p-3 text-left focus:outline-none focus:ring-4 focus:ring-amani-sun"
+                    >
+                      <span className="block font-bold text-amani-ink">{result.label}</span>
+                      <span className="mt-1 block text-sm text-slate-700">
+                        {[result.village, result.city, result.country].filter(Boolean).join(', ')}
+                      </span>
+                      {result.missing_fields.length > 0 && (
+                        <span className="mt-1 block text-sm font-semibold text-amber-900">
+                          {t('community.locationMissingFields')}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {recentLocations.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-bold text-slate-700">{t('community.recentLocations')}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {recentLocations.map((location) => (
+                      <button
+                        key={`recent-${location.provider}-${location.provider_place_id}`}
+                        type="button"
+                        onClick={() => selectLocation(location)}
+                        className="min-h-11 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 focus:outline-none focus:ring-4 focus:ring-amani-sun"
+                      >
+                        {locationSummary({
+                          country: location.country ?? '',
+                          city: location.city ?? '',
+                          village: location.village ?? '',
+                        })}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={() => setManualLocationMode((current) => !current)}
+                className="min-h-11 rounded-md border border-amani-forest px-3 py-2 text-sm font-bold text-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-sun"
+              >
+                {manualLocationMode ? t('community.hideManualLocation') : t('community.manualLocation')}
+              </button>
+            </div>
+
+            {manualLocationMode && (
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label htmlFor="country" className="block space-y-2">
+                  <span className="text-base font-bold text-amani-ink">{t('community.country')}</span>
+                  <input
+                    id="country"
+                    type="text"
+                    value={form.country}
+                    onChange={(event) => {
+                      setForm((current) => ({ ...current, country: event.target.value }));
+                      setStatus(null);
+                    }}
+                    aria-describedby={status?.target === 'location' ? 'report-status' : undefined}
+                    aria-invalid={hasValidationError && status?.target === 'location'}
+                    className="min-h-12 w-full rounded-md border border-slate-300 px-4 py-3 text-base focus:border-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-mist"
+                    placeholder={t('community.countryPlaceholder')}
+                  />
+                </label>
+                <label htmlFor="city" className="block space-y-2">
+                  <span className="text-base font-bold text-amani-ink">{t('community.city')}</span>
+                  <input
+                    id="city"
+                    type="text"
+                    value={form.city}
+                    onChange={(event) => setForm((current) => ({ ...current, city: event.target.value }))}
+                    className="min-h-12 w-full rounded-md border border-slate-300 px-4 py-3 text-base focus:border-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-mist"
+                    placeholder={t('community.cityPlaceholder')}
+                  />
+                </label>
+                <label htmlFor="village" className="block space-y-2">
+                  <span className="text-base font-bold text-amani-ink">{t('community.village')}</span>
+                  <input
+                    id="village"
+                    type="text"
+                    value={form.village}
+                    onChange={(event) => setForm((current) => ({ ...current, village: event.target.value }))}
+                    className="min-h-12 w-full rounded-md border border-slate-300 px-4 py-3 text-base focus:border-amani-forest focus:outline-none focus:ring-4 focus:ring-amani-mist"
+                    placeholder={t('community.villagePlaceholder')}
+                  />
+                </label>
+              </div>
+            )}
+
+            <div className="rounded-md border border-slate-200 bg-white p-4">
+              <h2 className="text-base font-bold text-amani-ink">{t('community.selectedArea')}</h2>
+              <p className="mt-1 text-sm text-slate-700">{locationSummary(form) || t('community.noAreaSelected')}</p>
+            </div>
+
+            <div className="space-y-2">
               <fieldset className="space-y-3">
                 <legend className="text-base font-bold text-amani-ink">{t('community.placeType')}</legend>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -618,10 +937,10 @@ export function CommunityReport() {
               </fieldset>
 
               <label htmlFor="rough-location" className="block text-base font-bold text-amani-ink">
-                {t('community.location')}
+                {t('community.locationExtra')}
               </label>
               <span id="rough-location-help" className="block text-sm text-slate-600">
-                {t('community.locationHelp')}
+                {t('community.locationExtraHelp')}
               </span>
               <input
                 id="rough-location"
@@ -758,6 +1077,12 @@ export function CommunityReport() {
                 <dt className="text-sm font-bold text-slate-600">{t('community.category')}</dt>
                 <dd className="mt-1 text-base text-amani-ink">{form.category ? t(`categories.${form.category}`) : t('community.missing')}</dd>
               </div>
+              {form.category === 'other' && (
+                <div className="rounded-md border border-slate-200 bg-white p-4">
+                  <dt className="text-sm font-bold text-slate-600">{t('community.otherCategoryLabel')}</dt>
+                  <dd className="mt-1 text-base text-amani-ink">{form.reporterCategoryText.trim()}</dd>
+                </div>
+              )}
               <div className="rounded-md border border-slate-200 bg-white p-4">
                 <dt className="text-sm font-bold text-slate-600">{t('community.urgency')}</dt>
                 <dd className="mt-1 text-base text-amani-ink">{t(`urgency.${form.urgency}`)}</dd>
@@ -769,6 +1094,12 @@ export function CommunityReport() {
               <div className="rounded-md border border-slate-200 bg-white p-4">
                 <dt className="text-sm font-bold text-slate-600">{t('community.location')}</dt>
                 <dd className="mt-1 text-base text-amani-ink">{form.roughLocation}</dd>
+              </div>
+              <div className="rounded-md border border-slate-200 bg-white p-4">
+                <dt className="text-sm font-bold text-slate-600">{t('community.assignmentArea')}</dt>
+                <dd className="mt-1 text-base text-amani-ink">
+                  {[form.village, form.city, form.country].filter(Boolean).join(', ')}
+                </dd>
               </div>
               <div className="rounded-md border border-slate-200 bg-white p-4">
                 <dt className="text-sm font-bold text-slate-600">{t('community.contactQuestion')}</dt>

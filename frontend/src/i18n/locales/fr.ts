@@ -11,6 +11,7 @@ export const fr = {
     followup: 'Suivi',
     responder: 'Repondant',
     public: 'Public',
+    account: 'Compte',
   },
   community: {
     title: 'Partager une preoccupation en securite',

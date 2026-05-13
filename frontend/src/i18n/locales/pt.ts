@@ -11,6 +11,7 @@ export const pt = {
     followup: 'Acompanhar',
     responder: 'Resposta',
     public: 'Publico',
+    account: 'Conta',
   },
   community: {
     title: 'Partilhe uma preocupacao com seguranca',

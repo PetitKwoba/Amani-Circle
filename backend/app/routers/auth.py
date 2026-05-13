@@ -1,43 +1,95 @@
-import hmac
+import sqlite3
 
 from fastapi import APIRouter, Request, Response
 
-from ..auth import create_session_token, read_session_token
+from ..auth import authenticate, hash_password, logout_session, session_from_request
 from ..errors import ApiError
-from ..schemas import ResponderLogin, ResponderSessionResponse
+from ..rate_limit import check_auth_rate_limit
+from ..schemas import AccountLogin, AccountSignup, AuthSessionResponse, ResponderLogin
 from ..settings import settings
+from ..store import signup_user
 
-router = APIRouter(prefix="/responder/auth", tags=["responder-auth"])
+router = APIRouter(tags=["auth"])
 
 
-@router.post("/login", response_model=ResponderSessionResponse)
-def login(credentials: ResponderLogin, response: Response) -> ResponderSessionResponse:
-    username_matches = hmac.compare_digest(credentials.username, settings.responder_username)
-    password_matches = hmac.compare_digest(credentials.password, settings.responder_password)
-    if not username_matches or not password_matches:
-        raise ApiError(401, "RESPONDER_LOGIN_INVALID", "Responder credentials are invalid.")
+def _client_key(request: Request, suffix: str) -> str:
+    host = request.client.host if request.client else "unknown"
+    return f"{host}:{suffix}"
 
+
+def _set_session_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=settings.session_cookie_name,
-        value=create_session_token(credentials.username),
+        value=token,
         httponly=True,
         secure=settings.session_cookie_secure,
         samesite="lax",
         max_age=settings.session_ttl_seconds,
         path="/",
     )
-    return ResponderSessionResponse(authenticated=True, username=credentials.username)
 
 
-@router.post("/logout", response_model=ResponderSessionResponse)
-def logout(response: Response) -> ResponderSessionResponse:
-    response.delete_cookie(settings.session_cookie_name, path="/")
-    return ResponderSessionResponse(authenticated=False)
+def _session_response(session) -> AuthSessionResponse:
+    return AuthSessionResponse(
+        authenticated=True,
+        username=session.username,
+        role=session.role.value,
+        contact_type=session.contact_type,
+        contact=session.contact,
+        contact_verified=session.contact_verified,
+    )
 
 
-@router.get("/session", response_model=ResponderSessionResponse)
-def session_status(request: Request) -> ResponderSessionResponse:
-    session = read_session_token(request.cookies.get(settings.session_cookie_name))
+@router.post("/auth/signup", response_model=AuthSessionResponse, status_code=201)
+def signup(signup_request: AccountSignup, request: Request, response: Response) -> AuthSessionResponse:
+    check_auth_rate_limit(_client_key(request, "signup"))
+    try:
+        signup_user(signup_request, hash_password(signup_request.password))
+    except sqlite3.IntegrityError:
+        raise ApiError(409, "ACCOUNT_UNAVAILABLE", "Account could not be created with those details.")
+
+    session = authenticate(signup_request.username, signup_request.password)
     if not session:
-        return ResponderSessionResponse(authenticated=False)
-    return ResponderSessionResponse(authenticated=True, username=session.username)
+        raise ApiError(500, "ACCOUNT_SESSION_FAILED", "Account was created but login failed.")
+    _set_session_cookie(response, session.token)
+    return _session_response(session)
+
+
+@router.post("/auth/login", response_model=AuthSessionResponse)
+def login(credentials: AccountLogin, request: Request, response: Response) -> AuthSessionResponse:
+    check_auth_rate_limit(_client_key(request, "login"))
+    session = authenticate(credentials.username, credentials.password)
+    if not session:
+        raise ApiError(401, "LOGIN_INVALID", "Login details are invalid.")
+    _set_session_cookie(response, session.token)
+    return _session_response(session)
+
+
+@router.post("/auth/logout", response_model=AuthSessionResponse)
+def logout(request: Request, response: Response) -> AuthSessionResponse:
+    logout_session(request)
+    response.delete_cookie(settings.session_cookie_name, path="/")
+    return AuthSessionResponse(authenticated=False)
+
+
+@router.get("/auth/session", response_model=AuthSessionResponse)
+def session_status(request: Request) -> AuthSessionResponse:
+    session = session_from_request(request)
+    if not session:
+        return AuthSessionResponse(authenticated=False)
+    return _session_response(session)
+
+
+@router.post("/responder/auth/login", response_model=AuthSessionResponse)
+def responder_login(credentials: ResponderLogin, request: Request, response: Response) -> AuthSessionResponse:
+    return login(AccountLogin(username=credentials.username, password=credentials.password), request, response)
+
+
+@router.post("/responder/auth/logout", response_model=AuthSessionResponse)
+def responder_logout(request: Request, response: Response) -> AuthSessionResponse:
+    return logout(request, response)
+
+
+@router.get("/responder/auth/session", response_model=AuthSessionResponse)
+def responder_session_status(request: Request) -> AuthSessionResponse:
+    return session_status(request)

@@ -1,20 +1,46 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CaseFollowUp } from './features/community/CaseFollowUp';
 import { CommunityReport } from './features/community/CommunityReport';
 import { PublicDashboard } from './features/public-dashboard/PublicDashboard';
-import { ResponderDashboard } from './features/responder/ResponderDashboard';
 import { QuickExit } from './features/safety/QuickExit';
 import { LanguagePicker } from './features/language/LanguagePicker';
 import { AccessibilityPreferences } from './features/accessibility/AccessibilityPreferences';
+import { Account } from './features/account/Account';
+import { InstallAppPrompt } from './features/install/InstallAppPrompt';
 
-type View = 'community' | 'followup' | 'responder' | 'public';
+type View = 'community' | 'followup' | 'public' | 'account';
 
-const views: View[] = ['community', 'followup', 'responder', 'public'];
+const views: View[] = ['community', 'followup', 'public', 'account'];
+
+function readViewFromHash(): View {
+  const hashView = window.location.hash.replace('#', '') as View;
+  return views.includes(hashView) ? hashView : 'community';
+}
 
 export function App() {
   const { t } = useTranslation();
-  const [activeView, setActiveView] = useState<View>('community');
+  const [activeView, setActiveView] = useState<View>(readViewFromHash);
+
+  useEffect(() => {
+    if (!views.includes(window.location.hash.replace('#', '') as View)) {
+      window.history.replaceState(null, '', '#community');
+    }
+
+    function handleHashChange() {
+      setActiveView(readViewFromHash());
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  function handleViewChange(view: View) {
+    setActiveView(view);
+    if (window.location.hash !== `#${view}`) {
+      window.location.hash = view;
+    }
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-amani-ink">
@@ -40,7 +66,7 @@ export function App() {
                 <button
                   key={view}
                   type="button"
-                  onClick={() => setActiveView(view)}
+                  onClick={() => handleViewChange(view)}
                   aria-current={activeView === view ? 'page' : undefined}
                   className={`min-h-12 rounded-md px-3 py-2 text-sm font-bold ${
                     activeView === view
@@ -60,12 +86,13 @@ export function App() {
           </div>
         </div>
       </header>
+      <InstallAppPrompt />
 
       <main id="main-content" className="mx-auto max-w-5xl px-4 py-6 sm:px-6" tabIndex={-1}>
         {activeView === 'community' && <CommunityReport />}
         {activeView === 'followup' && <CaseFollowUp />}
-        {activeView === 'responder' && <ResponderDashboard />}
         {activeView === 'public' && <PublicDashboard />}
+        {activeView === 'account' && <Account />}
       </main>
     </div>
   );

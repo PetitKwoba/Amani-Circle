@@ -12,6 +12,7 @@ vi.mock('../../api', () => ({
       by_region: [],
       by_week: [],
     }),
+  fetchPublicContent: () => Promise.resolve([]),
 }));
 
 describe('PublicDashboard', () => {
