@@ -62,12 +62,29 @@ export const sw = {
     intro: 'Mifano inaonyesha tu taarifa zinazohitajika kwa mwitikio wa kwanza.',
     empty: 'Hakuna ripoti zinazohitaji kukaguliwa sasa.',
   },
+  followup: {
+    title: 'Angalia hali ya ripoti',
+  },
+  account: {
+    title: 'Akaunti',
+    signup: 'Jisajili',
+    login: 'Ingia',
+    logout: 'Toka',
+  },
   public: {
     title: 'Mwelekeo wa umma',
     intro: 'Mwonekano huu unaonyesha takwimu zilizojumlishwa tu. Hauonyeshi maandishi ya ripoti, majina, au maeneo kamili.',
     total: 'Jumla ya ripoti',
     topCategory: 'Tatizo linalojitokeza zaidi',
     roughRegions: 'Maeneo ya jumla',
+  },
+  content: {
+    publicTitle: 'Taarifa za jamii',
+    article: 'Makala',
+    meeting: 'Mkutano',
+    loadMedia: 'Pakia media',
+    showMediaAutomatically: 'Onyesha media moja kwa moja',
+    noPublicContent: 'Hakuna taarifa za jamii zilizoidhinishwa bado.',
   },
   categories: {
     conflict_risk: 'Hatari ya mgogoro',

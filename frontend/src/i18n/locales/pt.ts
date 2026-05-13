@@ -62,12 +62,29 @@ export const pt = {
     intro: 'Os casos de exemplo mostram apenas as informacoes necessarias para a primeira resposta.',
     empty: 'Nao ha relatos para rever neste momento.',
   },
+  followup: {
+    title: 'Verificar estado do relato',
+  },
+  account: {
+    title: 'Conta',
+    signup: 'Criar conta',
+    login: 'Entrar',
+    logout: 'Sair',
+  },
   public: {
     title: 'Tendencias publicas',
     intro: 'Esta vista mostra apenas sinais agregados. Nao mostra texto dos relatos, nomes ou localizacoes exatas.',
     total: 'Total de relatos',
     topCategory: 'Preocupacao mais comum',
     roughRegions: 'Regioes aproximadas',
+  },
+  content: {
+    publicTitle: 'Atualizacoes da comunidade',
+    article: 'Artigo',
+    meeting: 'Reuniao',
+    loadMedia: 'Carregar media',
+    showMediaAutomatically: 'Mostrar media automaticamente',
+    noPublicContent: 'Ainda nao ha atualizacoes comunitarias aprovadas.',
   },
   categories: {
     conflict_risk: 'Risco de conflito',

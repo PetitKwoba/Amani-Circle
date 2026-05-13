@@ -1,5 +1,15 @@
 const CACHE_NAME = 'amani-circle-shell-v1';
 const SHELL_ASSETS = ['./', './offline.html', './manifest.webmanifest'];
+const STATIC_EXTENSIONS = ['.css', '.js', '.png', '.jpg', '.jpeg', '.webp', '.svg', '.ico', '.webmanifest', '.html'];
+
+function isStaticShellRequest(request) {
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return false;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/') || url.pathname.startsWith('/public/')) {
+    return false;
+  }
+  return STATIC_EXTENSIONS.some((extension) => url.pathname.endsWith(extension)) || url.pathname === '/' || url.pathname.endsWith('/index.html');
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));
@@ -22,7 +32,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (new URL(request.url).origin === self.location.origin) {
+  if (isStaticShellRequest(request)) {
     event.respondWith(
       caches.match(request).then((cached) => {
         const network = fetch(request)

@@ -55,11 +55,14 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Build
-        run: npm run build
-
       - name: Test
         run: npm test
+
+      - name: Audit high severity dependencies
+        run: npm audit --audit-level=high
+
+      - name: Build
+        run: npm run build
 
   backend-ci:
     needs: changes
@@ -85,4 +88,6 @@ jobs:
         run: pip install -r requirements-dev.txt
 
       - name: Run tests
-        run: pytest -q
+        env:
+          PYTHONPATH: .
+        run: python -m pytest -q

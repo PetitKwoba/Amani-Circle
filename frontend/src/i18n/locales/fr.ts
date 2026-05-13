@@ -62,12 +62,29 @@ export const fr = {
     intro: 'Les cas fictifs affichent uniquement les informations necessaires a la premiere reponse.',
     empty: 'Aucun signalement ne necessite un examen pour le moment.',
   },
+  followup: {
+    title: 'Verifier le statut du signalement',
+  },
+  account: {
+    title: 'Compte',
+    signup: 'S inscrire',
+    login: 'Se connecter',
+    logout: 'Se deconnecter',
+  },
   public: {
     title: 'Tendances publiques',
     intro: 'Cette vue affiche uniquement des signaux agreges. Elle ne montre pas le texte des signalements, les noms ou les localisations exactes.',
     total: 'Total des signalements',
     topCategory: 'Preoccupation la plus frequente',
     roughRegions: 'Zones approximatives',
+  },
+  content: {
+    publicTitle: 'Actualites communautaires',
+    article: 'Article',
+    meeting: 'Reunion',
+    loadMedia: 'Charger le media',
+    showMediaAutomatically: 'Afficher les medias automatiquement',
+    noPublicContent: 'Aucune actualite communautaire approuvee n est disponible pour le moment.',
   },
   categories: {
     conflict_risk: 'Risque de conflit',
